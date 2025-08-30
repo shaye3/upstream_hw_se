@@ -111,6 +111,18 @@ class PipelineOrchestrator:
             # Generate all reports
             vin_report = self.gold_reporter.generate_vin_last_state_report(silver_file)
             velocity_report = self.gold_reporter.fastest_vehicles_per_hour_report(silver_file)
+            
+            # Optional DQ report: SQL-injection-like patterns
+            try:
+                dq_report = self.gold_reporter.sql_violating_messages_report(
+                    bronze_file_path=str(Path(self.config.bronze_path) / "vehicle_messages" / "**" / "*.parquet"),
+                    gold_file_path=self.config.gold_path,
+                    columns=["vin", "manufacturer", "model"],
+                    regex_list=[r";", r"--", r"/\\*", r"\\*/", r"DROP", r"SELECT", r"INSERT", r"UPDATE", r"DELETE"]
+                )
+            except Exception as e:
+                self.logger.warning(f"SQL injection report generation failed: {e}")
+                dq_report = None
 
             
             results["stages"]["gold"] = {

@@ -138,6 +138,34 @@ class GoldReporter:
             
         self.logger.info(f"Found {len(report_files)} report files in Gold layer")
         return sorted(report_files)
+    
+    def sql_violating_messages_report(self, bronze_file_path: str, gold_file_path: str, columns: list[str], regex_list: list[str]):
+        con = duckdb.connect()
+
+        processing_timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        output_path = str(self.gold_path / f"sql_violating_messages_report{processing_timestamp}.parquet")
+        # Build WHERE conditions dynamically
+        conditions = []
+        for col in columns:
+            for regex in regex_list:
+                conditions.append(f"REGEXP_MATCHES(CAST({col} AS VARCHAR), '{regex}')")
+
+        where_clause = " OR ".join(conditions)
+
+        query = f"""
+            COPY (
+                SELECT *, 
+                    CASE
+                        {" ".join([f"WHEN REGEXP_MATCHES(CAST({col} AS VARCHAR), '{regex}') THEN '{col}'"
+                                    for col in columns for regex in regex_list])}
+                    END AS violating_column
+                FROM read_parquet('{bronze_file_path}')
+                WHERE {where_clause}
+            ) TO '{output_path}' (FORMAT 'parquet');
+        """
+
+        con.execute(query)
+        con.close()
 
 # if __name__ == "__main__":
 #     reporter = GoldReporter()
